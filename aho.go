@@ -30,9 +30,8 @@
 //   * MatchBytes  - matches against a []byte
 //   * MatchReader - matches against an io.Reader
 // Example:
-//   conn := net.Dial("www.google.com:80", "tcp")
-//   aho := ahocorasick.NewAhoCorasick([]string{"GET", "POST", "HTTP"})
-//   for match := ahocorasick.MatchReader(conn, aho) {
+//   aho := ahocorasick.NewAhoCorasick([]string{"abc", "abd", "abab", "blah"})
+//   for match := range ahocorasick.MatchReader(os.Stdin, aho) {
 //     fmt.Printf("Found match %q at index %d\n", match.Value, match.Index)
 //   }
 package ahocorasick
