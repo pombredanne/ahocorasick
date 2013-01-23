@@ -12,11 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ahocorasick provides a simple implementation of Aho-Corasick
+// Package ahocorasick provides a simple implementation of Aho-Corasick
 // string matching for go.
+//
+// This implementation allows you to very quickly match a number of
+// strings against a stream of input, returning matched strings as they appear.
+//
+// Example:
+//   aho := ahocorasick.NewAhoCorasick([]string{"abc", "abd", "abab", "blah"})
+//   var input io.ByteReader = ...
+//   for match := range aho.Match(input) {
+//     fmt.Printf("Found match %q at index %d\n", match.Value, match.Index)
+//   }
+// There's also some helper functions so you don't have to convert to an
+// io.ByteReader manually:
+//   * MatchString - matches against a string
+//   * MatchBytes  - matches against a []byte
+//   * MatchReader - matches against an io.Reader
+// Example:
+//   conn := net.Dial("www.google.com:80", "tcp")
+//   aho := ahocorasick.NewAhoCorasick([]string{"GET", "POST", "HTTP"})
+//   for match := ahocorasick.MatchReader(conn, aho) {
+//     fmt.Printf("Found match %q at index %d\n", match.Value, match.Index)
+//   }
 package ahocorasick
 
 import (
+	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -115,6 +138,21 @@ type AhoCorasick interface {
 	// stream 'zabcdef', Match{'b', 2} will be returned BEFORE
 	// Match{'abcd', 1}, since 'b' ends first.
 	Match(io.ByteReader) chan Match
+}
+
+// MatchString is a helpful wrapper to look for matches in a string.
+func MatchString(input string, aho AhoCorasick) chan Match {
+	return MatchBytes([]byte(input), aho)
+}
+
+// MatchBytes is a helpful wrapper to look for matches in a []byte.
+func MatchBytes(input []byte, aho AhoCorasick) chan Match {
+	return aho.Match(bytes.NewBuffer(input))
+}
+
+// MatchReader is a helpful wrapper to look for matches in an io.Reader.
+func MatchReader(input io.Reader, aho AhoCorasick) chan Match {
+	return aho.Match(bufio.NewReader(input))
 }
 
 // NewAhoCorasick creates a new AhoCorasick string matcher that matches
