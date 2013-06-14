@@ -255,33 +255,54 @@ func (t *acTree) Match(r io.ByteReader) chan Match {
 	return c
 }
 
+// Matcher allows you to do your own matching without a ByteReader, by passing
+// in bytes one at a time via the Next call and seeing if there are as yet any
+// matches.  Note that each Matcher assumes it's working from a single input
+// stream, so Match.Index will be the number of bytes starting from the first
+// byte the Matcher saw.
+type Matcher struct {
+	tree    *acTree
+	current *acNode
+	seek    int
+}
+
+func (t *acTree) Matcher() *Matcher {
+	return &Matcher{tree: t}
+}
+
+func (m *Matcher) Next(b byte) (out []Match) {
+	m.seek++
+	if m.current == nil {
+		m.current = m.tree.root
+	}
+	for m.current != nil {
+		if to := m.current.transitions.get(b); to != nil {
+			m.current = to
+			if m.current.dictIndex != nil {
+				// We've hit a node whose substring is in our dictionary, so output its key
+				out = append(out, Match{m.current.key, m.seek - len(m.current.key), *m.current.dictIndex})
+			}
+			// If this node links to others in the dictionary, output their keys
+			for dict := m.current.dict; dict != nil; dict = dict.dict {
+				out = append(out, Match{dict.key, m.seek - len(dict.key), *dict.dictIndex})
+			}
+			// We've found a transition in the graph, so we're done
+			return
+		}
+		// No transition found yet, so check our suffix
+		m.current = m.current.suffix
+	}
+	return nil
+}
+
 // match implements the internal logic for running a single match, reading
 // in each byte of the ByteReader and traversing the internal AC tree to look
 // for matches.
 func (t *acTree) match(reader io.ByteReader, output chan Match) {
-	current := t.root
-	index := 0
+	m := t.Matcher()
 	for b, err := reader.ReadByte(); err != io.EOF; b, err = reader.ReadByte() {
-		index++
-		for current != nil {
-			if to := current.transitions.get(b); to != nil {
-				current = to
-				if current.dictIndex != nil {
-					// We've hit a node whose substring is in our dictionary, so output its key
-					output <- Match{current.key, index - len(current.key), *current.dictIndex}
-				}
-				// If this node links to others in the dictionary, output their keys
-				for dict := current.dict; dict != nil; dict = dict.dict {
-					output <- Match{dict.key, index - len(dict.key), *dict.dictIndex}
-				}
-				// We've found a transition in the graph, so we're done
-				break
-			}
-			// No transition found yet, so check our suffix
-			current = current.suffix
-		}
-		if current == nil {
-			current = t.root
+		for _, match := range m.Next(b) {
+			output <- match
 		}
 	}
 	close(output)
