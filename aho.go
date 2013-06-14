@@ -137,6 +137,9 @@ type AhoCorasick interface {
 	// stream 'zabcdef', Match{'b', 2} will be returned BEFORE
 	// Match{'abcd', 1}, since 'b' ends first.
 	Match(io.ByteReader) chan Match
+	// Matcher returns a Matcher object for doing your own byte-by-byte
+	// matching, if you don't wanto to use a ByteReader/Channel.
+	Matcher() Matcher
 }
 
 // MatchString is a helpful wrapper to look for matches in a string.
@@ -260,17 +263,25 @@ func (t *acTree) Match(r io.ByteReader) chan Match {
 // matches.  Note that each Matcher assumes it's working from a single input
 // stream, so Match.Index will be the number of bytes starting from the first
 // byte the Matcher saw.
-type Matcher struct {
+type Matcher interface {
+	Next(b byte) []Match
+}
+
+type matcher struct {
 	tree    *acTree
 	current *acNode
 	seek    int
 }
 
-func (t *acTree) Matcher() *Matcher {
-	return &Matcher{tree: t}
+func (t *acTree) Matcher() Matcher {
+	return &matcher{tree: t}
 }
 
-func (m *Matcher) Next(b byte) (out []Match) {
+// Next feeds the next byte in a stream to the matcher, and returns any Matches
+// that have resulted because of the new byte... note that there may be 0, 1, or
+// many.  For example, if you're searching for "abc" and "bc", the byte 'c'
+// could return both of those if you've already input 'a' and 'b'.
+func (m *matcher) Next(b byte) (out []Match) {
 	m.seek++
 	if m.current == nil {
 		m.current = m.tree.root
